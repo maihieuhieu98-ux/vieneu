@@ -1,5 +1,5 @@
 /**
- * Cloudflare Worker: Telegram Bot 2 Mẫu Kịch Bản Nguyên Bản + 4 Giọng Đọc VieNeu Độc Quyền
+ * Cloudflare Worker: Telegram Bot 2 Mẫu Kịch Bản Nguyên Bản + Bộ SEO YouTube (Tiêu đề, Mô tả, Hashtag) + 4 Giọng Đọc VieNeu
  */
 
 const PROMPT_TAM_SU = `# VAI TRÒ
@@ -626,10 +626,10 @@ export default {
           await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, 
             `✍️ <b>Đang viết kịch bản theo:</b> <i>${templateName}</i>\n` +
             `🎬 <b>Tiêu đề:</b> "${originalText}"\n` +
-            `⏳ Google AI Studio đang xử lý, vui lòng đợi vài giây...`
+            `⏳ Google AI Studio đang xử lý: Tiêu đề SEO, Mô tả kênh, Hashtag và Toàn bộ Kịch bản...`
           );
 
-          // Chỉ viết kịch bản chữ, KHÔNG tự ý thu âm!
+          // Tạo đầy đủ Kịch bản + Bộ SEO (KHÔNG tự thu âm)
           await generateOnlyScript(env, chatId, originalText, basePrompt, templateName);
           return new Response("OK");
         }
@@ -672,8 +672,8 @@ export default {
       if (text === "/start") {
         await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, 
           `👋 <b>Chào mừng bạn đến với AI Script & Voice Studio!</b>\n\n` +
-          `✨ <b>Quy trình làm việc 2 bước:</b>\n` +
-          `1️⃣ <b>Tạo kịch bản:</b> Gửi tiêu đề ➡️ Bấm chọn Mẫu 1 hoặc Mẫu 2.\n` +
+          `✨ <b>Quy trình tự động hóa:</b>\n` +
+          `1️⃣ <b>Tạo kịch bản + Bộ SEO:</b> Gửi tiêu đề ➡️ Bấm chọn Mẫu 1 hoặc Mẫu 2.\n` +
           `2️⃣ <b>Thu âm:</b> Sau khi chỉnh sửa xong, dán kịch bản gửi vào đây ➡️ Bấm chọn 1 trong 4 giọng quen thuộc để nhận file MP3!`
         );
         return new Response("OK");
@@ -710,13 +710,30 @@ export default {
   }
 };
 
-// 1. Chỉ gọi Google AI Studio viết kịch bản (KHÔNG tự thu âm)
+// 1. Gọi Google AI Studio viết: Kịch bản + Bộ SEO YouTube (Tiêu đề SEO, Mô tả, Hashtag)
 async function generateOnlyScript(env, chatId, topic, basePrompt, templateName) {
   const fullPrompt = `${basePrompt}
 
 ---
-YÊU CẦU ĐẦU RA:
-Viết kịch bản hoàn chỉnh chi tiết theo đúng cấu trúc, ngôn ngữ và các quy tắc đã được nêu ở trên.
+YÊU CẦU ĐẦU RA BẮT BUỘC (PHẢI TRÌNH BÀY ĐẦY ĐỦ CÁC MỤC SAU):
+
+==================================================
+📌 BỘ THÔNG TIN YOUTUBE CHUẨN SEO
+==================================================
+1. TIÊU ĐỀ CHUẨN SEO:
+(Gợi ý 2-3 phương án tiêu đề cực kỳ hấp dẫn, gây tò mò, đúng công thức đặt tiêu đề đã yêu cầu).
+
+2. MÔ TẢ VIDEO (DESCRIPTION):
+(Bản mô tả chi tiết, cuốn hút người xem, kêu gọi like/đăng ký kênh và Miễn trừ trách nhiệm bản quyền/pháp lý an toàn cho kênh).
+
+3. BỘ HASHTAG CHUẨN SEO:
+(Tập hợp các hashtag thịnh hành, đúng đối tượng và chủ đề).
+
+==================================================
+📖 TOÀN BỘ KỊCH BẢN CHI TIẾT
+==================================================
+(Viết chi tiết, đúng mạch cảm xúc, phân cảnh và toàn bộ các quy tắc giữ chân người xem đã nêu ở trên).
+
 TIÊU ĐỀ CHO KỊCH BẢN ĐẦU VÀO CỦA TÔI:
 ${topic}`;
 
@@ -748,15 +765,15 @@ ${topic}`;
     return;
   }
 
-  // Gửi kịch bản chữ về Telegram
-  const scriptMessage = `📝 <b>KỊCH BẢN: ${escapeHtml(topic)}</b>\n<i>(${templateName})</i>\n\n${escapeHtml(rawOutput)}`;
+  // Gửi toàn bộ Kịch bản + Bộ SEO về Telegram
+  const scriptMessage = `🎬 <b>KẾT QUẢ CHO CHỦ ĐỀ: ${escapeHtml(topic)}</b>\n<i>(${templateName})</i>\n\n${escapeHtml(rawOutput)}`;
   await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, scriptMessage);
 
-  // Gửi thông báo nhắc nhở
+  // Gửi thông báo nhắc nhở bước tiếp theo
   await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId,
     `💡 <b>BƯỚC TIẾP THEO:</b>\n` +
-    `1. Bạn hãy copy kịch bản trên, chỉnh sửa câu chữ theo ý muốn.\n` +
-    `2. Khi đã sửa xong, <b>dán kịch bản gửi lại vào đây</b>, Bot sẽ hiện sẵn 4 nút bấm giọng đọc (<i>An Toàn Hàng Không, Chuyện Đời Hải Ngoại, Hồ Sơ Việt Kiều, Tiếng Lòng Viễn Xứ</i>) để bạn chạm chọn thu âm ngay nhé!`
+    `1. Bạn hãy copy phần kịch bản trên, chỉnh sửa câu từ theo ý muốn.\n` +
+    `2. Khi đã sửa xong, <b>dán kịch bản gửi lại vào đây</b>, Bot sẽ hiện sẵn 4 nút bấm giọng đọc (<i>An Toàn Hàng Không, Chuyện Đời Hải Ngoại, Hồ Sơ Việt Kiều, Tiếng Lòng Viễn Xứ Radio</i>) để bạn chạm chọn thu âm ra file MP3 nhé!`
   );
 }
 
