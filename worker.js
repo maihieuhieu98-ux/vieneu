@@ -1,5 +1,5 @@
 /**
- * Cloudflare Worker: Telegram Bot + Google AI Studio (Gemini) + GitHub Actions VieNeu-TTS
+ * Cloudflare Worker: Telegram Bot + Google AI Studio (Gemini 3.8 Flash) + GitHub Actions VieNeu-TTS
  */
 
 export default {
@@ -26,14 +26,14 @@ export default {
           `👉 <i>3 mẹo tiết kiệm pin iPhone ai cũng nên biết</i>\n` +
           `👉 <i>Kịch bản video ngắn TikTok review quán cà phê vintage</i>\n\n` +
           `⚡ <b>Quy trình tự động 100%:</b>\n` +
-          `1. Gemini AI sẽ viết kịch bản chi tiết trong 2 giây.\n` +
+          `1. Gemini 3.8 Flash sẽ viết kịch bản chi tiết trong 2 giây.\n` +
           `2. Máy chủ GitHub sẽ đọc kịch bản bằng giọng <b>VieNeu-TTS</b> và gửi file MP3 về Telegram!`
         );
         return new Response("OK");
       }
 
       // 1. Notify user that Gemini is writing the script
-      await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "✍️ <b>Google AI Studio (Gemini) đang viết kịch bản...</b> Vui lòng đợi 2-3 giây.");
+      await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "✍️ <b>Gemini 3.8 Flash đang viết kịch bản...</b> Vui lòng đợi 2-3 giây.");
 
       // 2. System prompt
       const systemPrompt = `Bạn là một chuyên gia biên kịch video ngắn (TikTok, Reels, YouTube Shorts).
@@ -53,8 +53,8 @@ Danh sách giọng đọc VieNeu có thể chọn cho 'voice':
 - "Chuyện Đời Hải Ngoại" (Nam, kể chuyện, phóng sự truyền cảm)
 - "Hồ Sơ Việt Kiều" (Nam, tin tức/phóng sự thời sự)`;
 
-      // Multi-model fallback list in case of 503 high demand
-      const candidateModels = ["gemini-3.1-flash-lite", "gemini-3-flash-preview", "gemini-3.5-flash-lite"];
+      // Ưu tiên Gemini 3.8 Flash đầu tiên, kèm dự phòng nếu Google báo quá tải tạm thời (503)
+      const candidateModels = ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-3-flash-preview"];
       let rawOutput = null;
       let lastError = null;
 
