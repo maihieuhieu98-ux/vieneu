@@ -1,5 +1,5 @@
 /**
- * Cloudflare Worker: Telegram Bot 2 Mẫu Kịch Bản Nguyên Bản + Google AI Studio + VieNeu-TTS
+ * Cloudflare Worker: Telegram Bot 2 Mẫu Kịch Bản Nguyên Bản + 4 Giọng Đọc VieNeu Độc Quyền
  */
 
 const PROMPT_TAM_SU = `# VAI TRÒ
@@ -604,39 +604,62 @@ export default {
     try {
       const update = await request.json();
 
-      // 1. XỬ LÝ KHI NGƯỜI DÙNG BẤM NÚT TRÊN ĐIỆN THOẠI (Callback Query)
+      // 1. XỬ LÝ KHI NGƯỜI DÙNG BẤM NÚT TRÊN ĐIỆN THOẠI
       if (update.callback_query) {
         const cq = update.callback_query;
         const chatId = cq.message.chat.id;
-        const data = cq.data; // "tpl_tamsu" hoặc "tpl_hangkhong"
-        
-        // Lấy lại tiêu đề gốc từ tin nhắn người dùng
-        const originalTopic = cq.message.reply_to_message?.text || "Kịch bản video";
+        const data = cq.data;
+        const originalText = cq.message.reply_to_message?.text || "";
 
-        // Báo cho Telegram tắt vòng xoay loading
         await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ callback_query_id: cq.id })
         });
 
-        const isTamSu = data === "tpl_tamsu";
-        const templateName = isTamSu ? "📻 Radio Tâm Sự Việt Kiều" : "✈️ An Toàn Bay Quốc Tế Tết 2027";
-        const voiceName = isTamSu ? "Chuyện Đời Hải Ngoại" : "An Toàn Hàng Không";
-        const basePrompt = isTamSu ? PROMPT_TAM_SU : PROMPT_HANG_KHONG;
+        // A. BẤM CHỌN MẪU ĐỂ TẠO KỊCH BẢN (Mẫu 1 hoặc Mẫu 2)
+        if (data === "tpl_tamsu" || data === "tpl_hangkhong") {
+          const isTamSu = data === "tpl_tamsu";
+          const templateName = isTamSu ? "📻 Radio Tâm Sự Việt Kiều" : "✈️ An Toàn Bay Quốc Tế Tết 2027";
+          const basePrompt = isTamSu ? PROMPT_TAM_SU : PROMPT_HANG_KHONG;
 
-        await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, 
-          `✍️ <b>Đang áp dụng mẫu:</b> <i>${templateName}</i>\n` +
-          `🎬 <b>Tiêu đề:</b> "${originalTopic}"\n` +
-          `⏳ Google AI Studio đang xử lý kịch bản chuẩn xác theo nguyên văn yêu cầu...`
-        );
+          await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, 
+            `✍️ <b>Đang viết kịch bản theo:</b> <i>${templateName}</i>\n` +
+            `🎬 <b>Tiêu đề:</b> "${originalText}"\n` +
+            `⏳ Google AI Studio đang xử lý, vui lòng đợi vài giây...`
+          );
 
-        // Gọi Google AI Studio xử lý kịch bản
-        await processAndGenerateScript(env, chatId, originalTopic, basePrompt, voiceName, templateName);
+          // Chỉ viết kịch bản chữ, KHÔNG tự ý thu âm!
+          await generateOnlyScript(env, chatId, originalText, basePrompt, templateName);
+          return new Response("OK");
+        }
+
+        // B. BẤM CHỌN ĐÚNG 4 GIỌNG ĐỌC QUEN THUỘC ĐỂ THU ÂM MP3
+        const voiceMap = {
+          "v_athk": "An Toàn Hàng Không",
+          "v_cdhn": "Chuyện Đời Hải Ngoại",
+          "v_hsvk": "Hồ Sơ Việt Kiều",
+          "v_tlvx": "Tiếng Lòng Viễn Xứ Radio"
+        };
+
+        if (voiceMap[data]) {
+          const selectedVoice = voiceMap[data];
+
+          await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId,
+            `🎙️ <b>Bắt đầu thu âm kịch bản!</b>\n` +
+            `🗣️ <b>Giọng đọc:</b> <i>${selectedVoice}</i> (VieNeu-TTS)\n` +
+            `⏳ Máy chủ GitHub Actions đang chuyển sang file MP3, vui lòng đợi khoảng 45-60 giây...`
+          );
+
+          // Kích hoạt GitHub Actions chuyển thành file MP3
+          await triggerGitHubTTS(env, chatId, originalText, selectedVoice);
+          return new Response("OK");
+        }
+
         return new Response("OK");
       }
 
-      // 2. XỬ LÝ KHI NGƯỜI DÙNG NHẮN TIN NHẮN MỚI
+      // 2. XỬ LÝ KHI NGƯỜI DÙNG GỬI TIN NHẮN
       if (!update.message || !update.message.text) {
         return new Response("OK");
       }
@@ -648,18 +671,32 @@ export default {
       // Lệnh /start
       if (text === "/start") {
         await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, 
-          `👋 <b>Chào mừng bạn đến với AI Script Studio!</b>\n\n` +
-          `Hệ thống đã nạp đầy đủ nguyên bản 2 bộ Prompt kịch bản chuyên sâu:\n` +
-          `1️⃣ <b>📻 Radio Tâm Sự Việt Kiều</b> (Giọng đọc: <i>Chuyện Đời Hải Ngoại</i>)\n` +
-          `2️⃣ <b>✈️ An Toàn Bay Quốc Tế Tết 2027</b> (Giọng đọc: <i>An Toàn Hàng Không</i>)\n\n` +
-          `👉 <b>Cách dùng:</b> Chỉ cần nhắn tiêu đề vào đây, Bot sẽ hiện sẵn 2 nút bấm để bạn chọn mẫu!`
+          `👋 <b>Chào mừng bạn đến với AI Script & Voice Studio!</b>\n\n` +
+          `✨ <b>Quy trình làm việc 2 bước:</b>\n` +
+          `1️⃣ <b>Tạo kịch bản:</b> Gửi tiêu đề ➡️ Bấm chọn Mẫu 1 hoặc Mẫu 2.\n` +
+          `2️⃣ <b>Thu âm:</b> Sau khi chỉnh sửa xong, dán kịch bản gửi vào đây ➡️ Bấm chọn 1 trong 4 giọng quen thuộc để nhận file MP3!`
         );
         return new Response("OK");
       }
 
-      // Hiện 2 nút bấm chọn mẫu
+      // NẾU LÀ KỊCH BẢN ĐÃ CHỈNH SỬA (độ dài > 100 ký tự)
+      // Bot hiện ngay 4 nút bấm tương ứng 4 giọng đọc quen thuộc của bạn:
+      if (text.length > 100) {
+        await sendInlineKeyboard(env.TELEGRAM_BOT_TOKEN, chatId, messageId,
+          `📝 <b>Đã nhận kịch bản của bạn (${text.length} ký tự)!</b>\n\n👇 <b>Vui lòng bấm chọn GIỌNG ĐỌC bạn muốn thu âm ra file MP3:</b>`,
+          [
+            [{ text: "🎙️ 1. An Toàn Hàng Không", callback_data: "v_athk" }],
+            [{ text: "🎙️ 2. Chuyện Đời Hải Ngoại", callback_data: "v_cdhn" }],
+            [{ text: "🎙️ 3. Hồ Sơ Việt Kiều", callback_data: "v_hsvk" }],
+            [{ text: "🎙️ 4. Tiếng Lòng Viễn Xứ Radio", callback_data: "v_tlvx" }]
+          ]
+        );
+        return new Response("OK");
+      }
+
+      // NẾU LÀ TIÊU ĐỀ NGẮN (<= 100 ký tự) -> Hiện 2 nút chọn Mẫu kịch bản
       await sendInlineKeyboard(env.TELEGRAM_BOT_TOKEN, chatId, messageId,
-        `🎬 <b>Chủ đề của bạn:</b>\n"<i>${escapeHtml(text)}</i>"\n\n👇 <b>Vui lòng bấm chọn mẫu kịch bản bạn muốn viết:</b>`,
+        `🎬 <b>Chủ đề:</b> "<i>${escapeHtml(text)}</i>"\n\n👇 <b>Vui lòng bấm chọn mẫu kịch bản bạn muốn viết:</b>`,
         [
           [{ text: "📻 1. Radio Tâm Sự Việt Kiều", callback_data: "tpl_tamsu" }],
           [{ text: "✈️ 2. An Toàn Bay Quốc Tế (Tết 2027)", callback_data: "tpl_hangkhong" }]
@@ -673,19 +710,13 @@ export default {
   }
 };
 
-// Hàm gọi Google AI Studio và kích hoạt VieNeu-TTS
-async function processAndGenerateScript(env, chatId, topic, basePrompt, voiceName, templateName) {
+// 1. Chỉ gọi Google AI Studio viết kịch bản (KHÔNG tự thu âm)
+async function generateOnlyScript(env, chatId, topic, basePrompt, templateName) {
   const fullPrompt = `${basePrompt}
 
 ---
-YÊU CẦU ĐẦU RA BẮT BUỘC:
-Trả về kết quả dưới định dạng JSON hợp lệ (không kèm ký tự markdown \`\`\`json bao quanh):
-{
-  "title": "Tiêu đề của câu chuyện",
-  "script_display": "Toàn bộ kịch bản chi tiết đúng cấu trúc, ngôn từ và tất cả các quy tắc đã được nêu ở trên",
-  "voiceover_text": "Phần nội dung thuần tiếng Việt để chuyển giọng nói sang máy đọc TTS (bỏ hết các ký tự ghi chú như [Phần 1], ngoặc đơn, ngoặc vuông, tiêu đề phân đoạn để giọng đọc được liền mạch tự nhiên nhất)"
-}
-
+YÊU CẦU ĐẦU RA:
+Viết kịch bản hoàn chỉnh chi tiết theo đúng cấu trúc, ngôn ngữ và các quy tắc đã được nêu ở trên.
 TIÊU ĐỀ CHO KỊCH BẢN ĐẦU VÀO CỦA TÔI:
 ${topic}`;
 
@@ -700,7 +731,7 @@ ${topic}`;
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
-          generationConfig: { temperature: 0.7, responseMimeType: "application/json" }
+          generationConfig: { temperature: 0.7 }
         })
       });
 
@@ -717,28 +748,22 @@ ${topic}`;
     return;
   }
 
-  let parsed;
-  try {
-    parsed = JSON.parse(rawOutput);
-  } catch (e) {
-    parsed = {
-      title: topic,
-      script_display: rawOutput,
-      voiceover_text: rawOutput.replace(/\[.*?\]/g, "")
-    };
-  }
-
-  // 1. Gửi bản kịch bản hoàn chỉnh về Telegram
-  const scriptMessage = `📝 <b>${escapeHtml(parsed.title || topic)}</b>\n<i>(${templateName})</i>\n\n${escapeHtml(parsed.script_display || rawOutput)}`;
+  // Gửi kịch bản chữ về Telegram
+  const scriptMessage = `📝 <b>KỊCH BẢN: ${escapeHtml(topic)}</b>\n<i>(${templateName})</i>\n\n${escapeHtml(rawOutput)}`;
   await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, scriptMessage);
 
-  // 2. Báo đang kích hoạt VieNeu-TTS thu âm
-  await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, 
-    `🎙️ <b>Đang thu âm giọng đọc VieNeu:</b> <i>${voiceName}</i>\n` +
-    `⏳ Đang tổng hợp file MP3 trên máy chủ GitHub Actions, vui lòng đợi trong giây lát...`
+  // Gửi thông báo nhắc nhở
+  await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId,
+    `💡 <b>BƯỚC TIẾP THEO:</b>\n` +
+    `1. Bạn hãy copy kịch bản trên, chỉnh sửa câu chữ theo ý muốn.\n` +
+    `2. Khi đã sửa xong, <b>dán kịch bản gửi lại vào đây</b>, Bot sẽ hiện sẵn 4 nút bấm giọng đọc (<i>An Toàn Hàng Không, Chuyện Đời Hải Ngoại, Hồ Sơ Việt Kiều, Tiếng Lòng Viễn Xứ</i>) để bạn chạm chọn thu âm ngay nhé!`
   );
+}
 
-  // 3. Kích hoạt GitHub Actions chuyển thành âm thanh MP3
+// 2. Kích hoạt GitHub Actions để thu âm bằng VieNeu-TTS
+async function triggerGitHubTTS(env, chatId, scriptText, voiceName) {
+  const cleanText = scriptText.replace(/<[^>]*>?/gm, "").trim();
+
   await fetch(`https://api.github.com/repos/${env.GITHUB_REPO}/dispatches`, {
     method: "POST",
     headers: {
@@ -750,10 +775,10 @@ ${topic}`;
     body: JSON.stringify({
       event_type: "generate_audio",
       client_payload: {
-        text: parsed.voiceover_text || parsed.script_display,
+        text: cleanText,
         voice: voiceName,
         chat_id: String(chatId),
-        title: parsed.title || topic
+        title: "Kịch bản đã chỉnh sửa"
       }
     })
   });
