@@ -60,7 +60,7 @@ Danh sách giọng đọc VieNeu có thể chọn cho trường 'voice':
 - "Chuyện Đời Hải Ngoại" (Nam, kể chuyện, phóng sự truyền cảm)
 - "Hồ Sơ Việt Kiều" (Nam, tin tức/phóng sự thời sự)`;
 
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`;
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${env.GEMINI_API_KEY}`;
       const geminiRes = await fetch(geminiUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
