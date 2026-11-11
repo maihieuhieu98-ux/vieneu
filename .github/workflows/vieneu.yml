@@ -1,0 +1,50 @@
+name: VieNeu-TTS Audio Generator
+
+on:
+  repository_dispatch:
+    types: [generate_audio]
+  workflow_dispatch:
+    inputs:
+      text:
+        description: 'Text to speak'
+        required: true
+        default: 'Xin chào, đây là thử nghiệm giọng đọc VieNeu'
+      voice:
+        description: 'Voice name'
+        required: true
+        default: 'Hải Đăng'
+      chat_id:
+        description: 'Telegram Chat ID'
+        required: true
+      title:
+        description: 'Script Title'
+        required: false
+        default: 'Thử nghiệm'
+
+jobs:
+  synthesize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 Install VieNeu & dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install vieneu requests soundfile
+
+      - name: 🎙️ Synthesize and Send Audio to Telegram
+        env:
+          TEXT: ${{ github.event.client_payload.text || github.event.inputs.text }}
+          VOICE: ${{ github.event.client_payload.voice || github.event.inputs.voice }}
+          CHAT_ID: ${{ github.event.client_payload.chat_id || github.event.inputs.chat_id }}
+          SCRIPT_TITLE: ${{ github.event.client_payload.title || github.event.inputs.title }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: |
+          python generate.py

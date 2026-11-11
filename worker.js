@@ -1,0 +1,170 @@
+/**
+ * Cloudflare Worker: Telegram Bot + Google AI Studio (Gemini) + GitHub Actions VieNeu-TTS
+ * 
+ * Required Environment Variables (set in Cloudflare Worker Settings > Variables):
+ * - TELEGRAM_BOT_TOKEN: From @BotFather
+ * - GEMINI_API_KEY: From Google AI Studio
+ * - GITHUB_PAT: GitHub Personal Access Token with 'repo' scope
+ * - GITHUB_REPO: "your-username/your-repo-name"
+ */
+
+export default {
+  async fetch(request, env, ctx) {
+    if (request.method !== "POST") {
+      return new Response("Telegram Webhook Worker is running!", { status: 200 });
+    }
+
+    try {
+      const update = await request.json();
+      if (!update.message || !update.message.text) {
+        return new Response("OK");
+      }
+
+      const chatId = update.message.chat.id;
+      const text = update.message.text.trim();
+
+      // Handle /start command
+      if (text === "/start") {
+        await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, 
+          `👋 <b>Chào mừng bạn đến với AI Script & Voice Studio!</b>\n\n` +
+          `✨ <b>Cách sử dụng cực kỳ đơn giản:</b>\n` +
+          `Chỉ cần gửi bất kỳ chủ đề video nào bạn muốn làm, ví dụ:\n` +
+          `👉 <i>3 mẹo tiết kiệm pin iPhone ai cũng nên biết</i>\n` +
+          `👉 <i>Kịch bản video ngắn TikTok giới thiệu quán cà phê vintage</i>\n` +
+          `👉 <i>Bí quyết đầu tư tài chính cho người mới bắt đầu</i>\n\n` +
+          `⚡ <b>Quy trình tự động 100%:</b>\n` +
+          `1. Gemini AI sẽ viết kịch bản chi tiết (Hook, Visual, CTA) trong 2 giây.\n` +
+          `2. Máy chủ GitHub sẽ đọc kịch bản bằng giọng <b>VieNeu-TTS</b> và gửi file MP3 về Telegram!`
+        );
+        return new Response("OK");
+      }
+
+      // 1. Notify user that Gemini is writing the script
+      await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, "✍️ <b>Gemini AI đang viết kịch bản...</b> Vui lòng đợi 2-3 giây.");
+
+      // 2. Call Google AI Studio (Gemini API)
+      const systemPrompt = `Bạn là một chuyên gia biên kịch video ngắn (TikTok, Reels, YouTube Shorts).
+Khi nhận được chủ đề hoặc yêu cầu, hãy viết kịch bản hấp dẫn và phân tách rõ ràng.
+BẮT BUỘC trả về dữ liệu đúng định dạng JSON hợp lệ (không kèm markdown \`\`\`json ở ngoài):
+{
+  "title": "Tiêu đề ngắn gọn của video",
+  "voice": "Hải Đăng",
+  "script_display": "Nội dung kịch bản chi tiết trình bày đẹp mắt cho người đọc (gồm Tiêu đề, Hook 3s đầu, Phân cảnh [Hình ảnh] và [Lời thoại], Kêu gọi hành động CTA)",
+  "voiceover_text": "Toàn bộ lời thoại đọc liên tục thuần tiếng Việt để máy đọc TTS. Tuyệt đối KHÔNG chứa bất kỳ ký tự mô tả nào như [Cảnh 1], [Âm nhạc], Hook:, CTA:, ngoặc đơn, ngoặc vuông."
+}
+
+Danh sách giọng đọc VieNeu có thể chọn cho trường 'voice':
+- "Hải Đăng" (Nam, Bắc, tự nhiên - khuyên dùng)
+- "Mai Anh" (Nữ, Bắc, tin tức/phát thanh)
+- "Thùy Dung" (Nữ, Nam, tin tức/quảng cáo)
+- "Chuyện Đời Hải Ngoại" (Nam, kể chuyện, phóng sự truyền cảm)
+- "Hồ Sơ Việt Kiều" (Nam, tin tức/phóng sự thời sự)`;
+
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${env.GEMINI_API_KEY}`;
+      const geminiRes = await fetch(geminiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [{ text: `${systemPrompt}\n\nChủ đề: ${text}` }]
+            }
+          ],
+          generationConfig: {
+            temperature: 0.7,
+            responseMimeType: "application/json"
+          }
+        })
+      });
+
+      if (!geminiRes.ok) {
+        const errText = await geminiRes.text();
+        await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, `❌ Lỗi Gemini API: ${errText.slice(0, 200)}`);
+        return new Response("OK");
+      }
+
+      const geminiData = await geminiRes.json();
+      const rawOutput = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      let parsed;
+      try {
+        parsed = JSON.parse(rawOutput);
+      } catch (e) {
+        parsed = {
+          title: "Kịch bản video",
+          voice: "Hải Đăng",
+          script_display: rawOutput,
+          voiceover_text: rawOutput.replace(/\[.*?\]/g, "")
+        };
+      }
+
+      // 3. Send detailed script to Telegram
+      const scriptMessage = `🎬 <b>${escapeHtml(parsed.title || "KỊCH BẢN VIDEO")}</b>\n\n${escapeHtml(parsed.script_display || rawOutput)}`;
+      await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, scriptMessage);
+
+      // 4. Notify user about audio generation
+      const voiceName = parsed.voice || "Hải Đăng";
+      await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, 
+        `🎙️ <b>Đang kích hoạt VieNeu-TTS để tạo giọng đọc:</b> <i>${voiceName}</i>\n` +
+        `⏳ Máy chủ GitHub đang tổng hợp âm thanh MP3, file sẽ được gửi về sau khoảng 40-60 giây...`
+      );
+
+      // 5. Trigger GitHub Actions via repository_dispatch
+      const ghUrl = `https://api.github.com/repos/${env.GITHUB_REPO}/dispatches`;
+      const ghRes = await fetch(ghUrl, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${env.GITHUB_PAT}`,
+          "Accept": "application/vnd.github.v3+json",
+          "User-Agent": "Cloudflare-Worker-Telegram-Bot",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          event_type: "generate_audio",
+          client_payload: {
+            text: parsed.voiceover_text || parsed.script_display,
+            voice: voiceName,
+            chat_id: String(chatId),
+            title: parsed.title || "Kịch bản AI"
+          }
+        })
+      });
+
+      if (!ghRes.ok) {
+        const ghErr = await ghRes.text();
+        await sendTelegramMessage(env.TELEGRAM_BOT_TOKEN, chatId, `⚠️ Không thể kích hoạt GitHub Actions: ${ghErr.slice(0, 150)}`);
+      }
+
+      return new Response("OK");
+    } catch (err) {
+      return new Response("Error: " + err.message, { status: 500 });
+    }
+  }
+};
+
+async function sendTelegramMessage(token, chatId, text) {
+  const url = `https://api.telegram.org/bot${token}/sendMessage`;
+  // Telegram has 4096 character limit
+  const maxLen = 4000;
+  for (let i = 0; i < text.length; i += maxLen) {
+    const chunk = text.slice(i, i + maxLen);
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: chunk,
+        parse_mode: "HTML"
+      })
+    });
+  }
+}
+
+function escapeHtml(str) {
+  if (!str) return "";
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
